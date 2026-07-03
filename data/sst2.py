@@ -1,5 +1,6 @@
 from transformers import AutoTokenizer
 from datasets import load_dataset
+from transformers import DataCollatorWithPadding
 
 def get_tokenizer(model_name: str):
     """
@@ -21,7 +22,7 @@ def load_sst2():
 def tokenize_function(examples, tokenizer):
     return tokenizer(
         examples["sentence"],
-        padding="max_length",
+        # padding="max_length",
         truncation=True
     )
 
@@ -48,17 +49,23 @@ def prepare_sst2(tokenizer):
 from torch.utils.data import DataLoader
 
 
-def get_dataloaders(tokenized_dataset, batch_size):
+def get_dataloaders(tokenized_dataset, batch_size, tokenizer):
+    collator = DataCollatorWithPadding(tokenizer)
+
     train_loader = DataLoader(
         tokenized_dataset["train"],
         batch_size=batch_size,
-        shuffle=True
+        shuffle=True,
+        num_workers=4,
+        collate_fn=collator
     )
 
     val_loader = DataLoader(
         tokenized_dataset["validation"],
         batch_size=batch_size,
-        shuffle=False
+        shuffle=False,
+        num_workers=4,
+        collate_fn=collator
     )
 
     return train_loader, val_loader

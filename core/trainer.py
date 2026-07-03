@@ -15,10 +15,12 @@ class Trainer:
     def train_epoch(self) -> float:
         self.model.train()
         total_loss = 0
-        
-        for batch in self.train_loader:
+        print("Starting training loop")
+        for batch in tqdm(self.train_loader, desc="Training", leave=False):
             # move data to device
             batch = {k: v.to(self.device) for k, v in batch.items()}
+            # print("Batch loaded")
+            # print("Batch moved to device")
 
             # Extract labels and not let model compute loss
             labels = batch.pop("labels")
@@ -28,15 +30,17 @@ class Trainer:
 
             #model outputs
             outputs = self.model(**batch)
-
+            # print("Forward done")
             # Calculate loss
-            loss = self.loss_fn(output.logits, labels)
+            loss = self.loss_fn(outputs.logits, labels)
 
             # Backward pass
             loss.backward()
+            # print("Loss computed")
 
             # Update params
             self.optimizer.step()
+            # print("Backward done")
 
             total_loss += loss.item()
 
@@ -52,7 +56,7 @@ class Trainer:
             return None
 
         with torch.no_grad():
-            for batch in self.val_loader:
+            for batch in tqdm(self.val_loader, desc="Validation", leave=False):
 
                 batch = {k: v.to(self.device) for k, v in batch.items()}
 
