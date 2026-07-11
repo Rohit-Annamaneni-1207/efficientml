@@ -14,7 +14,7 @@ def merge_lora(model):
                 base_linear.in_features, 
                 base_linear.out_features, 
                 bias=base_linear.bias is not None
-            )
+            ).to(base_linear.weight.device, dtype=base_linear.weight.dtype)
 
             merged_linear.weight.data.copy_(merged_weight)
 

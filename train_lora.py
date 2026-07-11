@@ -8,6 +8,9 @@ from lora.inject import *
 from lora.utils import *
 from lora.merge import *
 from core.trainer import Trainer
+from eval.benchmark import benchmark
+
+
 
 def main():
     # model_name = "bert-base-uncased"
@@ -45,6 +48,9 @@ def main():
     LoRA_model = merge_lora(LoRA_model)
 
     torch.save(LoRA_model.state_dict(), "lora_bert_sst2.pt")
+    results = benchmark(LoRA_model, val_loader, device)
+
+    print(results)
 
     with open(f"lora_{model_name}_sst2.json", "w") as f:
         json.dump(history, f)
