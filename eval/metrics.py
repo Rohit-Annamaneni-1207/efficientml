@@ -1,15 +1,12 @@
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-)
+import torch
 
 
-def classification_metrics(labels, preds):
-    return {
-        "accuracy": accuracy_score(labels, preds),
-        "precision": precision_score(labels, preds, average="binary"),
-        "recall": recall_score(labels, preds, average="binary"),
-        "f1_score": f1_score(labels, preds, average="binary"),
-    }
+def accuracy(correct: int, total: int) -> float:
+    """
+    Computes classification accuracy.
+    """
+
+    if total == 0:
+        return 0.0
+
+    return correct / total

@@ -12,13 +12,22 @@ class BaseObserver(ABC):
     def get_range(self):
         pass
 
+    @abstractmethod
+    def calculate_qparams(self):
+        pass
+
 class MinMaxObserver(BaseObserver):
 
-    def __init__(self):
+    def __init__(self, num_bits: int = 8):
         self.min_val = None
         self.max_val = None
+        self.num_bits = num_bits
+        self.qmax = 2 ** (self.num_bits - 1) - 1
+        self.qmin = -(2 ** (self.num_bits - 1))
 
     def observe(self, tensor: torch.Tensor):
+
+        tensor = tensor.detach().float()
         current_min = tensor.min()
         current_max = tensor.max()
 
@@ -37,6 +46,28 @@ class MinMaxObserver(BaseObserver):
             )
 
         return self.min_val, self.max_val
+    
+    def calculate_qparams(self):
+
+        max_abs = torch.max(
+            torch.abs(self.min_val),
+            torch.abs(self.max_val),
+        )
+
+        scale = max_abs / self.qmax
+
+        if scale == 0:
+            scale = torch.tensor(
+                1.0,
+                device=max_abs.device,
+            )
+
+        zero_point = torch.tensor(
+            0.0,
+            device=max_abs.device,
+        )
+
+        return scale, zero_point
     
 if __name__ == "__main__":
     observer = MinMaxObserver()

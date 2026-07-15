@@ -1,40 +1,50 @@
-import torch
+import time
 
-from .latency import Timer
-from .report import build_report
+import torch
+from tqdm import tqdm
+
+from eval.metrics import accuracy
+from eval.utils import get_model_size
 
 
 def benchmark(model, dataloader, device):
+
+    model.to(device)
     model.eval()
 
-    preds = []
-    labels = []
+    total_correct = 0
+    total_samples = 0
 
-    with Timer() as timer:
-        with torch.no_grad():
-            for batch in dataloader:
+    total_time = 0.0
 
-                batch = {
-                    k: v.to(device)
-                    for k, v in batch.items()
-                }
+    with torch.no_grad():
 
-                y = batch.pop("labels")
+        for batch in tqdm(dataloader, desc="Benchmark", leave=False):
 
-                outputs = model(**batch)
+            batch = {
+                k: v.to(device)
+                for k, v in batch.items()
+            }
 
-                pred = torch.argmax(outputs.logits, dim=-1)
+            labels = batch.pop("labels")
 
-                preds.extend(pred.cpu().tolist())
-                labels.extend(y.cpu().tolist())
+            start = time.perf_counter()
+            outputs = model(**batch)
+            end = time.perf_counter()
 
-    batch_size = dataloader.batch_size
+            logits = outputs.logits
+            predictions = torch.argmax(logits, dim=-1)
 
-    return build_report(
-        model=model,
-        labels=labels,
-        preds=preds,
-        total_time=timer.elapsed,
-        batch_size=batch_size,
-        device=device,
-    )
+            total_correct += (predictions == labels).sum().item()
+            total_samples += labels.size(0)
+            total_time += end - start
+
+    results = {
+        "accuracy": accuracy(total_correct, total_samples),
+        "total_time": total_time,
+        "avg_latency": total_time / total_samples,
+        "throughput": total_samples / total_time,
+        "model_size_mb": get_model_size(model),
+    }
+
+    return results

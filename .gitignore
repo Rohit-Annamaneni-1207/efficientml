@@ -2,3 +2,4 @@ venv
 *.pt
 *.json
 __pycache__
+checkpoints/*

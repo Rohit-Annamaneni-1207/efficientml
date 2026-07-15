@@ -1,25 +1,16 @@
-from .metrics import classification_metrics
-from .latency import latency_metrics
-from .model_stats import parameter_stats, model_size
+def print_report(results):
 
+    print("\n===================================")
+    print("Benchmark Report")
+    print("===================================")
 
-def build_report(
-    model,
-    labels,
-    preds,
-    total_time,
-    batch_size,
-    device,
-):
-    report = {}
+    print(f"Accuracy          : {results['accuracy']:.4f}")
+    print(f"Model Size        : {results['model_size_mb']:.2f} MB")
+    print(f"Total Time        : {results['total_time']:.3f} s")
+    print(f"Avg Latency       : {results['avg_latency'] * 1000:.3f} ms/sample")
+    print(f"Throughput        : {results['throughput']:.2f} samples/s")
 
-    report.update(classification_metrics(labels, preds))
-    report.update(latency_metrics(total_time, len(labels)))
-    report.update(parameter_stats(model))
+    if "compression_ratio" in results:
+        print(f"Compression Ratio : {results['compression_ratio']:.2f}x")
 
-    report["model_size_mb"] = model_size(model)
-    report["device"] = str(device)
-    report["batch_size"] = batch_size
-    report["num_samples"] = len(labels)
-
-    return report
+    print("===================================\n")
