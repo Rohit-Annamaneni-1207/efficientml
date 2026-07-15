@@ -24,13 +24,12 @@ The project is classification-focused today and is built around SST-2. The evalu
 
 ## Installation
 
-Create a Python environment, then install the dependencies used by the project. If you maintain a populated `requirements.txt`, you can install directly from it:
+Create a Python environment, then install the dependencies used by the project in `requirements.txt`.
 
 ```bash
+python3 -m venv venv
 pip install -r requirements.txt
 ```
-
-If your checkout has an empty dependency file, install the packages used by the codebase manually, including PyTorch, Gradio, pandas, transformers, datasets, and the other runtime dependencies required by your local environment.
 
 ## Run The Examples
 
