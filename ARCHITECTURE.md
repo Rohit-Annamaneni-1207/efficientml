@@ -560,6 +560,112 @@ Embedding layers, LayerNorm, Softmax, GELU and other transformer operations rema
 
 This minimizes implementation complexity while preserving accuracy.
 
+
+# Quantization Aware Training (QAT) Execution Flow
+
+Unlike PTQ, QAT performs quantization during training.
+
+```
+
+Floating Point Model
+        │
+        ▼
+Deep Copy Model
+        │
+        ▼
+Assign qconfigs
+        │
+        ▼
+prepare_qat()
+        │
+        ▼
+Insert Fake Quantization Modules
+        │
+        ▼
+Fine-tuning
+        │
+        ▼
+convert()
+        │
+        ▼
+INT8 Model
+
+```
+
+## Step 1 — Prepare
+
+The model is switched into training mode.
+
+A backend qconfig is assigned to every quantizable module.
+
+`prepare_qat()` inserts
+
+- FakeQuantize modules
+- Observers
+
+instead of immediately replacing modules.
+
+The model remains entirely floating point.
+
+---
+
+## Step 2 — QAT Training
+
+Training proceeds normally.
+
+However,
+
+every forward pass contains simulated quantization.
+
+Weights are
+
+```
+float
+
+↓
+
+fake quantize
+
+↓
+
+dequantize
+
+↓
+
+forward
+```
+
+Activations follow the same process.
+
+Gradients are still computed in floating point.
+
+This allows the optimizer to learn weights that are naturally robust to quantization error.
+
+---
+
+## Step 3 — Convert
+
+After training,
+
+`convert()`
+
+replaces fake quantization modules with actual quantized operators.
+
+The exported model performs real INT8 inference.
+
+---
+
+## Advantages
+
+Compared to PTQ,
+
+QAT usually
+
+- preserves more accuracy
+- adapts to quantization noise
+- produces better deployment models
+
+
 # Benchmark Pipeline
 
 Every compressed model is evaluated using the same benchmark.

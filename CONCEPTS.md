@@ -258,6 +258,479 @@ The slowdown is caused by backend limitations rather than the quantization algor
 
 Dynamic PTQ is heavily optimized for Intel CPUs (FBGEMM) but not Apple ARM processors.
 
+# Quantization Aware Training
+
+## Motivation
+
+Static PTQ quantizes a model after training.
+
+The model has never observed quantization error during optimization.
+
+This often produces an accuracy drop.
+
+QAT addresses this by exposing the model to quantization noise during training.
+
+The optimizer therefore learns weights that remain effective after quantization.
+
+---
+
+## Fake Quantization
+
+QAT does **not** perform integer arithmetic during training.
+
+Instead,
+
+the forward pass simulates quantization.
+
+```
+
+float weights
+
+↓
+
+Quantize
+
+↓
+
+INT8 values
+
+↓
+
+Immediately dequantize
+
+↓
+
+float values
+
+↓
+
+Forward propagation
+
+```
+
+The network therefore behaves as if it were quantized,
+
+while gradients can still be computed using floating-point arithmetic.
+
+---
+
+## Straight Through Estimator (STE)
+
+The quantization operation
+
+```
+round()
+```
+
+has zero derivative almost everywhere.
+
+Backpropagation would therefore fail.
+
+QAT uses the
+
+Straight Through Estimator (STE).
+
+Forward
+
+```
+q = round(x)
+```
+
+Backward
+
+```
+dq/dx ≈ 1
+```
+
+The gradient simply passes through the rounding operation.
+
+Although mathematically incorrect,
+
+STE has been shown empirically to work well for quantized neural networks.
+
+---
+
+## Observer Modules
+
+During training,
+
+observer modules estimate
+
+- minimum activation
+- maximum activation
+
+These values continuously update
+
+- scale
+- zero point
+
+Unlike PTQ,
+
+the observer statistics evolve throughout training.
+
+---
+
+## FakeQuantize Modules
+
+FakeQuantize combines
+
+Observer
+
++
+
+Quantization
+
++
+
+Dequantization
+
+inside one module.
+
+Every forward pass becomes
+
+```
+
+float
+
+↓
+
+observer update
+
+↓
+
+quantize
+
+↓
+
+dequantize
+
+↓
+
+forward
+
+```
+
+The model therefore experiences realistic quantization error during optimization.
+
+---
+
+## Why QAT Usually Outperforms PTQ
+
+PTQ
+
+```
+
+Train
+
+↓
+
+Quantize
+
+↓
+
+Deploy
+
+```
+
+QAT
+
+```
+
+Train
+
+↓
+
+Simulated Quantization
+
+↓
+
+Weight Adaptation
+
+↓
+
+Deploy
+
+```
+
+Since the optimizer minimizes the loss under simulated quantization,
+
+the final quantized model generally retains higher accuracy.
+
+---
+
+## Computational Cost
+
+Compared to PTQ,
+
+QAT
+
+Advantages
+
+- Higher final accuracy
+- Better activation calibration
+- Smaller performance degradation
+
+Disadvantages
+
+- Requires retraining
+- Longer optimization time
+- More GPU memory
+- More engineering complexity
+
+For this reason,
+
+PTQ is commonly preferred when training resources are unavailable,
+
+while QAT is preferred for production deployment.
+
+# Gradient Flow During Quantization Aware Training
+
+## The Problem
+
+Quantization contains a rounding operation
+
+```
+q = round(x / scale) + zero_point
+```
+
+The derivative of
+
+```
+round(x)
+```
+
+is
+
+```
+0
+```
+
+almost everywhere.
+
+Therefore, if backpropagation were performed through the true quantization function,
+
+```
+∂L/∂x = 0
+```
+
+and training would stop immediately.
+
+---
+
+## Fake Quantization
+
+Instead of performing real quantization,
+
+QAT performs
+
+```
+Float Weight
+      │
+      ▼
+Quantize
+      │
+      ▼
+INT8 Representation
+      │
+      ▼
+Immediately Dequantize
+      │
+      ▼
+Float Tensor
+      │
+      ▼
+Forward Computation
+```
+
+The network therefore experiences quantization error,
+
+while remaining numerically floating point.
+
+---
+
+## Straight Through Estimator (STE)
+
+PyTorch uses the Straight Through Estimator.
+
+Forward pass
+
+```
+y = FakeQuantize(x)
+```
+
+which behaves approximately as
+
+```
+y = dequantize(quantize(x))
+```
+
+Backward pass
+
+the fake quantization operation is treated as
+
+```
+∂y/∂x = 1
+```
+
+inside the valid quantization range.
+
+Instead of differentiating through
+
+```
+round()
+```
+
+the gradient is copied directly to the input.
+
+```
+Forward
+
+Float
+   │
+   ▼
+Round
+   │
+   ▼
+INT8
+
+Backward
+
+Gradient
+   ▲
+   │
+Copied directly
+   │
+Float
+```
+
+This approximation is called the Straight Through Estimator (STE).
+
+---
+
+## What Gets Detached?
+
+During the forward pass,
+
+the following values are **not** part of gradient computation:
+
+- quantized integer values
+- rounded values
+- observer statistics
+- scale computation
+- zero-point computation
+
+These values are treated as constants during backpropagation.
+
+Only the original floating-point parameters receive gradients.
+
+For a Linear layer
+
+```
+Weight
+      │
+      ▼
+FakeQuantize
+      │
+      ▼
+Quantized Weight
+      │
+      ▼
+Dequantize
+      │
+      ▼
+Forward
+```
+
+The gradient path is
+
+```
+Loss
+ ▲
+ │
+Dequantized Weight
+ ▲
+ │
+STE
+ ▲
+ │
+Original FP32 Weight
+```
+
+The quantized representation is **not updated**.
+
+Instead,
+
+the floating-point weight is updated,
+
+and a new fake-quantized version is generated during the next forward pass.
+
+---
+
+## Observer Parameters
+
+Observers collect
+
+- minimum activation
+- maximum activation
+- histograms
+
+These statistics determine
+
+- scale
+- zero point
+
+Observer statistics are updated using forward-pass measurements only.
+
+They are **not trainable parameters**.
+
+No gradients are computed for observer modules.
+
+---
+
+## Scale and Zero Point
+
+Scale and zero point participate in the forward computation,
+
+but they are **not optimized with gradient descent**.
+
+Instead,
+
+they are periodically recomputed from observer statistics.
+
+Therefore,
+
+```
+Weight  → receives gradients
+
+Activation → receives gradients
+
+Scale → detached
+
+Zero Point → detached
+
+Observer Statistics → detached
+```
+
+---
+
+## Summary
+
+During QAT,
+
+only the original floating-point model parameters are optimized.
+
+Everything related to integer quantization—
+
+- rounding
+- integer tensors
+- scale computation
+- zero-point computation
+- observer statistics
+
+is excluded from gradient computation.
+
+The Straight Through Estimator allows gradients to flow directly from the fake-quantized tensor back to the original floating-point parameters, enabling standard backpropagation while still exposing the network to realistic quantization noise.
+
 # Important Lessons
 
 Building model compression involves more than implementing algorithms.
